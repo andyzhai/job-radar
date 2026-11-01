@@ -1,0 +1,7 @@
+{
+  "databasePath": "runtime/database/job-radar.sqlite",
+  "chromeProfilePath": "%LOCALAPPDATA%/WebBot/Chrome/User Data",
+  "capturesPath": "runtime/captures",
+  "port": 3210,
+  "sourceTimezone": "America/Toronto"
+}

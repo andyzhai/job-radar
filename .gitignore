@@ -1,0 +1,12 @@
+node_modules/
+dist/
+runtime/
+job-radar-settings.local.json
+*.log
+.env
+.env.*
+!.env.example
+*.sqlite*
+*.db*
+chrome-profile/
+test-results/

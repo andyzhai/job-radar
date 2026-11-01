@@ -1,0 +1,13 @@
+[
+  {
+    "id": "indeed-software-developer-toronto",
+    "enabled": true,
+    "source": "indeed",
+    "keywords": "Software Developer",
+    "location": "Toronto, ON",
+    "initialLookbackDays": 30,
+    "overlapDays": 2,
+    "maxPages": 3,
+    "delayMs": 2000
+  }
+]
