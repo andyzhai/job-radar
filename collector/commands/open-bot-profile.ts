@@ -1,52 +1,75 @@
-import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
-import { assertDedicatedProfile, readSettings } from "../../read-settings.js";
-import { chromeExecutable } from "../browser/open-persistent-chrome.js";
+import { readSettings } from "../../read-settings.js";
+import { openPersistentBrowser } from "../browser/open-persistent-browser.js";
 import { readSearches } from "../collection/run-configured-searches.js";
 
-const settings = readSettings();
-assertDedicatedProfile(settings.chromeProfilePath);
-mkdirSync(settings.chromeProfilePath, { recursive: true });
-const mode = process.argv[2];
-if (mode && !["indeed", "app"].includes(mode))
-  throw new Error("Usage: npm run profile [-- indeed|app]");
-const search = readSearches().find((s) => s.enabled);
-const indeed = new URL("https://ca.indeed.com/jobs");
-if (search) {
-  indeed.searchParams.set("q", search.keywords);
-  indeed.searchParams.set("l", search.location);
-  indeed.searchParams.set("sort", "date");
+async function main() {
+  const settings = readSettings();
+  const mode = process.argv[2];
+  if (mode && !["indeed", "app"].includes(mode))
+    throw new Error("Usage: npm run profile [-- indeed|app]");
+  const search = readSearches().find((s) => s.enabled);
+  const indeed = new URL("https://ca.indeed.com/jobs");
+  if (search) {
+    indeed.searchParams.set("q", search.keywords);
+    indeed.searchParams.set("l", search.location);
+    indeed.searchParams.set("sort", "date");
+  }
+  const urls =
+    mode === "app"
+      ? [`http://127.0.0.1:${settings.port}`]
+      : mode === "indeed"
+        ? [indeed.href]
+        : [
+            "https://accounts.google.com/",
+            "https://ca.indeed.com/",
+            "https://www.linkedin.com/login",
+          ];
+  const context = await openPersistentBrowser(settings);
+  let isClosed = false;
+  const closed = new Promise<void>((resolve) =>
+    context.once("close", () => {
+      isClosed = true;
+      resolve();
+    }),
+  );
+  const close = () => {
+    void context.close().catch(() => {});
+  };
+  process.once("SIGINT", close);
+  process.once("SIGTERM", close);
+  try {
+    console.log(`Opened the dedicated ${settings.browser} bot profile.`);
+    console.log(
+      "Sign in manually with your dedicated accounts. This command stays running until the browser closes. Close these windows before collection or inspection.",
+    );
+    for (const [index, url] of urls.entries()) {
+      if (isClosed) break;
+      const page =
+        index === 0
+          ? context.pages()[0] || (await context.newPage())
+          : await context.newPage();
+      try {
+        await page.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: 45_000,
+        });
+      } catch {
+        // A slow/offline site must not close the user's manual-login window.
+        if (!isClosed)
+          console.warn(
+            `Could not load ${new URL(url).hostname}. You can navigate manually in the browser.`,
+          );
+      }
+    }
+    await closed;
+  } finally {
+    process.removeListener("SIGINT", close);
+    process.removeListener("SIGTERM", close);
+    await context.close();
+  }
 }
-const urls =
-  mode === "app"
-    ? [`http://127.0.0.1:${settings.port}`]
-    : mode === "indeed"
-      ? [indeed.href]
-      : [
-          "https://accounts.google.com/",
-          "https://ca.indeed.com/",
-          "https://www.linkedin.com/login",
-        ];
-const child = spawn(
-  chromeExecutable(),
-  [
-    `--user-data-dir=${settings.chromeProfilePath}`,
-    "--profile-directory=Default",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--new-window",
-    ...urls,
-  ],
-  { detached: true, stdio: "ignore" },
-);
-child.on("error", () => {
-  console.error("Could not open Chrome.");
+
+main().catch((error) => {
+  console.error(error.message || "Could not open the selected bot browser.");
   process.exitCode = 1;
 });
-child.unref();
-console.log(
-  `Opened the dedicated Web Bot Chrome profile: ${settings.chromeProfilePath}`,
-);
-console.log(
-  "Sign in manually with your dedicated accounts. Close these bot windows before npm run collect or inspect.",
-);

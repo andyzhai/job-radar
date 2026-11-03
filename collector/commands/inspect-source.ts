@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline/promises";
-import { openPersistentChrome } from "../browser/open-persistent-chrome.js";
+import { openPersistentBrowser } from "../browser/open-persistent-browser.js";
 import { capturePageLayout } from "../inspection/capture-page-layout.js";
 import { readSettings, projectRoot } from "../../read-settings.js";
 import { readFileSync } from "node:fs";
@@ -25,7 +25,9 @@ const url =
     : new URL("https://www.linkedin.com/jobs/search/");
 url.searchParams.set(source === "indeed" ? "q" : "keywords", search.keywords);
 url.searchParams.set(source === "indeed" ? "l" : "location", search.location);
-const context = await openPersistentChrome();
+const settings = readSettings();
+console.log(`Opening ${settings.browser} for inspection.`);
+const context = await openPersistentBrowser(settings);
 try {
   const page = context.pages()[0] || (await context.newPage());
   await page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45_000 });
@@ -39,9 +41,7 @@ try {
     );
     input.close();
   } else await page.waitForTimeout(3000);
-  console.log(
-    await capturePageLayout(page, readSettings().capturesPath, source),
-  );
+  console.log(await capturePageLayout(page, settings.capturesPath, source));
 } finally {
   await context.close();
 }

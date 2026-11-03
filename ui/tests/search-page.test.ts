@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { chromium } from "playwright";
+import { openTestBrowser } from "../../collector/tests/browser-test-helper.js";
 import { mkdtempSync, rmSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,7 +11,7 @@ import { saveJobs } from "../../collector/storage/save-jobs.js";
 import { sampleJob } from "../../collector/tests/test-data.js";
 import { projectRoot } from "../../read-settings.js";
 
-test("built UI searches, filters, paginates and opens details after the writer exits, on desktop and mobile", async () => {
+test("built UI searches, filters, paginates and opens details after the writer exits, on desktop and mobile", async (t) => {
   assert.equal(
     existsSync(resolve(projectRoot, "dist/ui/index.html")),
     true,
@@ -35,13 +35,13 @@ test("built UI searches, filters, paginates and opens details after the writer e
   const server = createJobServer(path);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  t.after(() => rmSync(folder, { recursive: true, force: true }));
+  const browser = await openTestBrowser(t, { width: 1440, height: 1080 });
   const captures = resolve(projectRoot, "runtime/captures");
   mkdirSync(captures, { recursive: true });
   try {
-    const page = await browser.newPage({
-      viewport: { width: 1440, height: 1080 },
-    });
+    const page = await browser.newPage();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(
@@ -117,7 +117,5 @@ test("built UI searches, filters, paginates and opens details after the writer e
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    rmSync(folder, { recursive: true, force: true });
   }
 });

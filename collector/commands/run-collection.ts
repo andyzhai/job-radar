@@ -1,5 +1,6 @@
 import { readSettings } from "../../read-settings.js";
-import { openPersistentChrome } from "../browser/open-persistent-chrome.js";
+import { openPersistentBrowser } from "../browser/open-persistent-browser.js";
+import { withCollectorLock } from "../collection/collector-lock.js";
 import { openJobDatabase } from "../storage/open-job-database.js";
 import { recoverInterruptedRuns } from "../storage/save-run-result.js";
 import {
@@ -26,32 +27,35 @@ async function main() {
     return;
   }
   const settings = readSettings();
-  const browser = await openPersistentChrome();
-  // Chrome's profile lock is acquired before marking prior runs interrupted.
-  try {
-    const db = openJobDatabase(settings.databasePath);
+  await withCollectorLock(settings.databasePath, async () => {
+    console.log(`Opening ${settings.browser} for collection.`);
+    const browser = await openPersistentBrowser(settings);
+    // Both the database lock and selected profile are acquired before recovery.
     try {
-      recoverInterruptedRuns(db);
-      const results = await runConfiguredSearches(
-        db,
-        browser,
-        settings,
-        searches,
-      );
-      // Nonzero distinguishes limited coverage from a completed scan for future scheduling.
-      process.exitCode = results.some(
-        (r) => r.status === "failed" || r.status === "blocked",
-      )
-        ? 1
-        : results.some((r) => r.status === "partial")
-          ? 2
-          : 0;
+      const db = openJobDatabase(settings.databasePath);
+      try {
+        recoverInterruptedRuns(db);
+        const results = await runConfiguredSearches(
+          db,
+          browser,
+          settings,
+          searches,
+        );
+        // Nonzero distinguishes limited coverage from a completed scan for future scheduling.
+        process.exitCode = results.some(
+          (r) => r.status === "failed" || r.status === "blocked",
+        )
+          ? 1
+          : results.some((r) => r.status === "partial")
+            ? 2
+            : 0;
+      } finally {
+        db.close();
+      }
     } finally {
-      db.close();
+      await browser.close();
     }
-  } finally {
-    await browser.close();
-  }
+  });
 }
 
 main().catch((error) => {

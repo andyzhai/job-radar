@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chromium } from "playwright";
+import { openTestBrowser } from "./browser-test-helper.js";
 import { collectIndeedJobs } from "../sources/indeed/collect-indeed-jobs.js";
 import { config } from "./test-data.js";
 
 // Synthetic DOM fixture based on the inspected public page structure.
 // All requests are intercepted; this test never reaches Indeed or the bot profile.
-test("source reads the correct inline descriptions when application links are absent", async () => {
-  const browser = await chromium.launch({ channel: "chrome", headless: true });
+test("source reads the correct inline descriptions when application links are absent", async (t) => {
+  const browser = await openTestBrowser(t);
   try {
     const page = await browser.newPage();
     await page.route("**/*", (route) => {
